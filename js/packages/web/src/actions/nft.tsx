@@ -4,7 +4,7 @@ import {
   createMetadata,
   programIds,
   notify,
-  ENV,
+  ENDPOINT_NAME,
   updateMetadata,
   createMasterEdition,
   sendTransactionWithRetry,
@@ -17,7 +17,7 @@ import {
   Attribute,
   getAssetCostToStore,
   FileOrString,
-  MetadataFile,
+  MetadataFile
 } from '@oyster/common';
 import React, { Dispatch, SetStateAction } from 'react';
 import { MintLayout, Token } from '@solana/spl-token';
@@ -37,10 +37,9 @@ import GetUrl from "react-aws-s3-typescript/dist/Url";
 import {dateYMD, xAmzDate} from 'react-aws-s3-typescript/dist/Date';
 import Signature from 'react-aws-s3-typescript/dist/Signature';
 
-
-
 const RESERVED_TXN_MANIFEST = 'manifest.json';
 const RESERVED_METADATA = 'metadata.json';
+
 const randFilename = getRandomString(20);
 const s3BucketUrlEnv = String(process.env.NEXT_PUBLIC_AWS_S3_BUCKET_URL);
 const bucketNameEnv = String(process.env.NEXT_PUBLIC_AWS_S3_BUCKET_NAME) ;
@@ -100,7 +99,6 @@ export async function awsUpload(
     s3Url: s3BucketUrlEnv,
   }
 
-
   const urlFiles: UploadResponse[] = [];
 
   for (const file of files)
@@ -113,6 +111,7 @@ export async function awsUpload(
       console.log(exception);
     }
   }
+
   return urlFiles;
 }
 
@@ -125,11 +124,51 @@ function getRandomString(length) {
   return result;
 }
 
+export const prepPayForFilesTxn = async (
+  wallet: WalletSigner,
+  files: File[],
+  metadata: any,
+): Promise<{
+  instructions: TransactionInstruction[];
+  signers: Keypair[];
+}> => {
+  const memo = programIds().memo;
+
+  const instructions: TransactionInstruction[] = [];
+  const signers: Keypair[] = [];
+
+  if (wallet.publicKey)
+    instructions.push(
+      SystemProgram.transfer({
+        fromPubkey: wallet.publicKey,
+        toPubkey: AR_SOL_HOLDER_ID,
+        lamports: await getAssetCostToStore(files),
+      }),
+    );
+
+  for (let i = 0; i < files.length; i++) {
+    const hashSum = crypto.createHash('sha256');
+    hashSum.update(await files[i].text());
+    const hex = hashSum.digest('hex');
+    instructions.push(
+      new TransactionInstruction({
+        keys: [],
+        programId: memo,
+        data: Buffer.from(hex),
+      }),
+    );
+  }
+
+  return {
+    instructions,
+    signers,
+  };
+}
 
 export const mintNFT = async (
   connection: Connection,
   wallet: WalletSigner | undefined,
-  env: ENV,
+  endpoint: ENDPOINT_NAME,
   files: File[],
   metadata: {
     name: string;
@@ -172,7 +211,7 @@ export const mintNFT = async (
 
   metadataContent.properties.files.forEach((value: FileOrString) => {
     const valueFile = value as MetadataFile;
-    valueFile.uri = s3BucketUrlEnv+'/'+randFilename+'/'+valueFile.uri;
+    valueFile.uri = s3BucketUrlEnv+'/'+randFilename+'/'+valueFile.uri;;
   });
 
   const realFiles: File[] = [
@@ -283,8 +322,6 @@ export const mintNFT = async (
       ),
       type: 'error',
     });
-  }
-
 
   // Force wait for max confirmations
   // await connection.confirmTransaction(txid, 'max');
@@ -308,12 +345,10 @@ export const mintNFT = async (
   // TODO: convert to absolute file name for image
 
   const result: UploadResponse[] = await awsUpload(realFiles);
-
   progressCallback(6);
   const metadataFile = result.find(
     m => m.key.includes(RESERVED_METADATA)
   );
-
   if (metadataFile?.status == 204) {
     const updateInstructions: TransactionInstruction[] = [];
     const updateSigners: Keypair[] = [];
@@ -405,46 +440,6 @@ export const mintNFT = async (
   // TODO:
   // 1. Jordan: --- upload file and metadata to storage API
   // 2. pay for storage by hashing files and attaching memo for each file
+
   return { metadataAccount };
-};
-
-export const prepPayForFilesTxn = async (
-  wallet: WalletSigner,
-  files: File[],
-  metadata: any,
-): Promise<{
-  instructions: TransactionInstruction[];
-  signers: Keypair[];
-}> => {
-  const memo = programIds().memo;
-
-  const instructions: TransactionInstruction[] = [];
-  const signers: Keypair[] = [];
-
-  if (wallet.publicKey)
-    instructions.push(
-      SystemProgram.transfer({
-        fromPubkey: wallet.publicKey,
-        toPubkey: AR_SOL_HOLDER_ID,
-        lamports: await getAssetCostToStore(files),
-      }),
-    );
-
-  for (let i = 0; i < files.length; i++) {
-    const hashSum = crypto.createHash('sha256');
-    hashSum.update(await files[i].text());
-    const hex = hashSum.digest('hex');
-    instructions.push(
-      new TransactionInstruction({
-        keys: [],
-        programId: memo,
-        data: Buffer.from(hex),
-      }),
-    );
-  }
-
-  return {
-    instructions,
-    signers,
-  };
-};
+}};
