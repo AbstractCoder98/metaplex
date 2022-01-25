@@ -13,6 +13,9 @@ export interface ArtCardProps extends CardProps {
 
   image?: string;
   animationURL?: string;
+  animationObject?: object;
+  onCreate?: boolean;
+  onItems?: boolean;
 
   category?: MetadataCategory;
 
@@ -38,6 +41,9 @@ export const ArtCard = (props: ArtCardProps) => {
     category,
     image,
     animationURL,
+    animationObject,
+    onCreate,
+    onItems,
     name,
     preview,
     creators,
@@ -91,11 +97,14 @@ export const ArtCard = (props: ArtCardProps) => {
           pubkey={pubkey}
           uri={image}
           animationURL={animationURL}
+          animation={animationObject}
+          onCreate={onCreate}
           category={category}
           preview={preview}
           height={height}
           width={width}
           artView={artView}
+          onItems={onItems}
         />
       </div>
       <Meta

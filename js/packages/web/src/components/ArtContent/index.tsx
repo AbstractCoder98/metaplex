@@ -26,18 +26,18 @@ const MeshArtContent = ({
     files && files.length > 0 && typeof files[0] === 'string'
       ? files[0]
       : animationUrl;
-  const { isLoading } = useCachedImage(renderURL || '', true);
+  // const { isLoading } = useCachedImage(renderURL || '', true);
 
-  if (isLoading) {
-    return (
-      <CachedImageContent
-        uri={uri}
-        className={className}
-        preview={false}
-        style={{ width: '100%', ...style }}
-      />
-    );
-  }
+  // if (isLoading) {
+  //   return (
+  //     <CachedImageContent
+  //       uri={uri}
+  //       className={className}
+  //       preview={false}
+  //       style={{ width: '100%', ...style }}
+  //     />
+  //   );
+  // }
 
   return <MeshViewer url={renderURL} className={className} style={style} />;
 };
@@ -73,6 +73,8 @@ const VideoArtContent = ({
   style,
   files,
   uri,
+  animation,
+  onCreate,
   animationURL,
   active,
 }: {
@@ -80,10 +82,13 @@ const VideoArtContent = ({
   style?: React.CSSProperties;
   files?: (MetadataFile | string)[];
   uri?: string;
+  animation?: object;
+  onCreate?: boolean;
   animationURL?: string;
   active?: boolean;
 }) => {
   const [playerApi, setPlayerApi] = useState<StreamPlayerApi>();
+  const [videoFilePath, setVideoFilePath] = useState("");
 
   const playerRef = useCallback(
     ref => {
@@ -91,6 +96,14 @@ const VideoArtContent = ({
     },
     [setPlayerApi],
   );
+
+  useEffect(() => {
+    if (onCreate) {
+      const animationBlob = animation as Blob;
+      setVideoFilePath(URL.createObjectURL(animationBlob));
+    }
+  }, [animation]);
+  
 
   useEffect(() => {
     if (playerApi) {
@@ -106,6 +119,7 @@ const VideoArtContent = ({
     // TODO: filter by fileType
     return arr.length >= 2 ? index === 1 : index === 0;
   })?.[0] as string;
+
 
   const content =
     likelyVideo &&
@@ -155,8 +169,19 @@ const VideoArtContent = ({
         </video>
       </div>
     );
+  
+  const contentOnCreation =
+    likelyVideo ? (
+      <div>
+        <video src={videoFilePath} controls={true} poster={uri}></video>
+      </div>
+    ) : (
+      <div>
+        <video src={videoFilePath} controls={true} poster={uri}></video>
+      </div>
+    );
 
-  return content;
+  return onCreate ? contentOnCreation : content;
 };
 
 const HTMLWrapper = styled.div`
@@ -236,6 +261,11 @@ const ArtContentWrapper = styled.div`
   height: 100%;
 `;
 
+interface fileContent {
+  type?: string;
+  uri?: string;
+}
+
 export const ArtContent = ({
   category,
   className,
@@ -246,6 +276,9 @@ export const ArtContent = ({
   pubkey,
   uri,
   animationURL,
+  animation,
+  onCreate,
+  onItems,
   files,
   artView,
 }: {
@@ -261,6 +294,9 @@ export const ArtContent = ({
   pubkey?: PublicKey | string;
   uri?: string;
   animationURL?: string;
+  animation?: object;
+  onCreate?: boolean;
+  onItems?: boolean;
   files?: (MetadataFile | string)[];
   artView?: boolean;
 }) => {
@@ -291,8 +327,14 @@ export const ArtContent = ({
 
   useEffect(() => {
     if (pubkey && data) {
+      const files = data.properties.files;
       setUriState(data.image);
-      setAnimationURLState(data.animation_url);
+      if (files) {
+        const innerFile = files as fileContent[];
+        setAnimationURLState(data.animation_url?.includes(".glb") ? innerFile[1].uri : data.animation_url);
+      }else {
+        setAnimationURLState(data.animation_url);
+      }      
     }
 
     if (pubkey && data?.properties) {
@@ -344,6 +386,8 @@ export const ArtContent = ({
         files={filesState}
         uri={uriState}
         animationURL={animationURLState}
+        animation={animation}
+        onCreate={onCreate}
         active={active}
       />
     ) : (
@@ -354,12 +398,21 @@ export const ArtContent = ({
         style={style}
       />
     );
+  
+  const contentOnItems = onItems && (
+    <CachedImageContent
+        uri={uriState}
+        className={className}
+        preview={preview}
+        style={style}
+      />
+  )
 
   return (
     <ArtContentWrapper
       ref={ref as any}
     >
-      {content}
+      {!onItems ? content : contentOnItems}
     </ArtContentWrapper>
   );
 };

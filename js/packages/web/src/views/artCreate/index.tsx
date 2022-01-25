@@ -15,6 +15,7 @@ import {
   Space,
   Card,
   Tooltip,
+  Switch
 } from 'antd';
 import { ArtCard } from './../../components/ArtCard';
 import { UserSearch, UserValue } from './../../components/UserSearch';
@@ -42,6 +43,7 @@ import { MintLayout } from '@solana/spl-token';
 import { useHistory, useParams } from 'react-router-dom';
 import { cleanName, getLast } from '../../utils/utils';
 import { AmountLabel } from '../../components/AmountLabel';
+import { MeshViewer } from '../../components/MeshViewer';
 import useWindowDimensions from '../../utils/layout';
 import {
   LoadingOutlined,
@@ -167,6 +169,10 @@ export const ArtCreateView = () => {
         <Col span={24} {...(stepsVisible ? { md: 20 } : { md: 24 })}>
           {step === 0 && (
             <CategoryStep
+              attributes={attributes}
+              setAttributes={setAttributes}
+              files={files}
+              setFiles={setFiles}
               confirm={(category: MetadataCategory) => {
                 setAttributes({
                   ...attributes,
@@ -234,10 +240,37 @@ export const ArtCreateView = () => {
   );
 };
 
+const baseAttributes: IMetadataExtension = {
+  name: "",
+  symbol: "",
+  creators: [],
+  description: "",
+  image: "",
+  animation_url: "",
+  attributes: [],
+  external_url: "",
+  seller_fee_basis_points: 0,
+  properties: {
+    files: [],
+    category: MetadataCategory["image"],
+    maxSupply: 0,
+  }
+}
+
 const CategoryStep = (props: {
+  attributes: IMetadataExtension;
+  setAttributes: (attr: IMetadataExtension) => void;
+  files: File[];
+  setFiles: (files: File[]) => void;
   confirm: (category: MetadataCategory) => void;
 }) => {
   const { width } = useWindowDimensions();
+
+  useEffect(() => {
+    props.setFiles([]);
+    props.setAttributes(baseAttributes);
+  }, []);
+  
   return (
     <>
       <Row className="call-to-action">
@@ -332,7 +365,7 @@ const UploadStep = (props: {
 
   const [customURL, setCustomURL] = useState<string>('');
   const [customURLErr, setCustomURLErr] = useState<string>('');
-  const disableContinue = !(coverFile || (!customURLErr && !!customURL));
+  const disableContinue = !((coverFile && mainFile) || (!customURLErr && !!customURL));
 
   useEffect(() => {
     props.setAttributes({
@@ -633,6 +666,9 @@ const InfoStep = (props: {
   );
   const [form] = Form.useForm();
   const [itemTitle, setItemTitle] = useState<String>(props.attributes.name);
+  const [isGlb, setIsGlb] = useState(false);
+  const [showGlb, setShowGlb] = useState(false);
+  const [renderURL, setRenderURL] = useState("");
 
   const quantityTooltip = "If you do not add a defined quantity, the stock of your item will be unlimited";
 
@@ -644,6 +680,22 @@ const InfoStep = (props: {
       })),
     );
   }, [creators]);
+
+  useEffect(() => {
+    const animationBlob = props.files[1] as Blob;
+    if (props.files[1]?.name.includes('.glb')) {
+      setIsGlb(true);
+      setRenderURL(URL.createObjectURL(animationBlob));
+    }else {
+      setIsGlb(false);
+    }
+  }, []);
+  
+
+  const onChange = (e) => {
+    setShowGlb(e ? true : false);
+  }
+
   return (
     <>
       <Row className="call-to-action">
@@ -655,18 +707,37 @@ const InfoStep = (props: {
       </Row>
       <Row className="content-action" justify="space-around">
         <Col style={{ maxWidth: "50%" }}>
-          {props.attributes.image && (
-            <ArtCard
-              image={image}
-              animationURL={props.attributes.animation_url}
-              category={props.attributes.properties?.category}
-              name={props.attributes.name}
-              symbol={props.attributes.symbol}
-              small={true}
-              artView={!(props.files.length > 1)}
-              className="art-create-card"
-            />
-          )}
+          <div style={{ display: "flex", flexFlow: "column", alignItems: "center" }}>
+            {isGlb && (
+              <>
+                <div className="switch-options">
+                  <p>Cover</p>
+                  <Switch defaultChecked checked={showGlb ? true : false} onChange={onChange} style={{ marginBottom: "1rem" }} />
+                  <p>Model</p>
+                </div>
+              </>
+            )}
+            {props.attributes.image && !showGlb && (
+              <ArtCard
+                image={image}
+                animationURL={props.attributes.animation_url}
+                animationObject={props.files[1]}
+                onCreate={true}
+                category={props.attributes.properties?.category}
+                name={props.attributes.name}
+                symbol={props.attributes.symbol}
+                small={true}
+                artView={!(props.files.length > 1)}
+                className="art-create-card"
+              />
+            )}
+            {isGlb && showGlb && (
+              <MeshViewer
+                url={renderURL}
+                style={{ width: 400, height: 400 }}
+              />
+            )}
+          </div>
         </Col>
         <Col className="section" style={{ minWidth: 300, maxWidth: "50%" }}>
           <label className="action-field">
@@ -688,7 +759,7 @@ const InfoStep = (props: {
               }}
             />
           </label>
-          <label className="action-field">
+          {/* <label className="action-field">
             <span className="field-title">Symbol</span>
             <Input
               className="input"
@@ -703,7 +774,7 @@ const InfoStep = (props: {
                 })
               }
             />
-          </label>
+          </label> */}
 
           <label className="action-field">
             <span className="field-title">Description</span>
@@ -1089,9 +1160,6 @@ const RoyaltiesStep = (props: {
           type="primary"
           size="large"
           onClick={() => {
-            console.log("royalties: ", royalties);
-            console.log("fixedCreators: ", fixedCreators);
-            console.log("creators: ", creators);
             // Find all royalties that are invalid (0)
             const zeroedRoyalties = royalties.filter(
               royalty => royalty.amount === 0,
@@ -1116,8 +1184,6 @@ const RoyaltiesStep = (props: {
                     Math.round(100 / royalties.length),
                 }),
             );
-
-            console.log("creatorStructs: ", creatorStructs)
 
             const share = creatorStructs.reduce(
               (acc, el) => (acc += el.share),
@@ -1154,6 +1220,11 @@ const LaunchStep = (props: {
   );
   const files = props.files;
   const metadata = props.attributes;
+
+  const [isGlb, setIsGlb] = useState(false);
+  const [showGlb, setShowGlb] = useState(false);
+  const [renderURL, setRenderURL] = useState("");
+
   useEffect(() => {
     const rentCall = Promise.all([
       props.connection.getMinimumBalanceForRentExemption(MintLayout.span),
@@ -1182,6 +1253,20 @@ const LaunchStep = (props: {
       });
   }, [files, metadata, setCost]);
 
+  useEffect(() => {
+    const animationBlob = props.files[1] as Blob;
+    if (props.files[1]?.name.includes('.glb')) {
+      setIsGlb(true);
+      setRenderURL(URL.createObjectURL(animationBlob));
+    }else {
+      setIsGlb(false);
+    }
+  }, []);
+
+  const onChange = (e) => {
+    setShowGlb(e ? true : false);
+  }
+
   return (
     <>
       <Row className="call-to-action">
@@ -1193,8 +1278,18 @@ const LaunchStep = (props: {
       </Row>
       <Row className="content-action" justify="space-around">
         <Col>
-          {props.attributes.image && (
-            <ArtCard
+          <div style={{ display: "flex", flexFlow: "column", alignItems: "center" }}>
+            {isGlb && (
+              <>
+                <div className="switch-options">
+                  <p>Cover</p>
+                  <Switch defaultChecked checked={showGlb ? true : false} onChange={onChange} style={{ marginBottom: "1rem" }} />
+                  <p>Model</p>
+                </div>
+              </>
+            )}
+            {props.attributes.image && !showGlb && (
+              <ArtCard
               image={image}
               animationURL={props.attributes.animation_url}
               category={props.attributes.properties?.category}
@@ -1204,7 +1299,14 @@ const LaunchStep = (props: {
               artView={props.files[1]?.type === 'unknown'}
               className="art-create-card"
             />
-          )}
+            )}
+            {isGlb && showGlb && (
+              <MeshViewer
+                url={renderURL}
+                style={{ width: 400, height: 400 }}
+              />
+            )}
+          </div>
         </Col>
         <Col className="section" style={{ minWidth: 300 }}>
           <Statistic
@@ -1386,7 +1488,8 @@ const Congrats = (props: {
         <Button
           className="metaplex-button"
           onClick={_ =>
-            history.push(`/art/${props.nft?.metadataAccount.toString()}`)
+            // history.push(`/art/${props.nft?.metadataAccount.toString()}`)
+            history.push('/artworks/')
           }
         >
           <span>See it in your collection</span>
